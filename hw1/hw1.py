@@ -1,8 +1,11 @@
+#pip install wget
+
 import urllib.request as url
 import pandas as pd
+import wget
 
-# urllib.request.urlretrieve('https://www.ndbc.noaa.gov/view_text_file.php?filename=41025h2022.txt.gz&dir=data/historical/stdmet/','41025h2022.csv')
-
-urllib.request.urlretrieve('https://library.ucsd.edu/dc/object/bb4003017c','phy577_projects/data/test.csv')
+wget('https://library.ucsd.edu/dc/object/bb4003017c')
 
 url.urlretrieve('https://library.ucsd.edu/dc/object/bb4003017c','phy577_projects/data/test.csv')
+
+data = pd.read_csv('phy577_projects/data/XXXXXX.csv')
