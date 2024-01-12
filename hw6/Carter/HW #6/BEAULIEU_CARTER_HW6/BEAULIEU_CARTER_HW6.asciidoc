@@ -1,0 +1,559 @@
++*In[40]:*+
+[source, ipython3]
+----
+import numpy as np
+from scipy.fft import fft
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import linregress
+from scipy.signal import welch
+
+########################################################################
+file_path1 = "C:\\Users\\cbeau\\OneDrive - UNC-Wilmington\\Documents\\PHY 577\\ersst5.nino.mth.91-20.ascii.txt"  # Update this with the correct file path
+ENSO= pd.read_csv(file_path1, delim_whitespace=True)  # Adjust delimiter if needed
+file_path2 = "C:\\Users\\cbeau\\OneDrive - UNC-Wilmington\\Documents\\PHY 577\\npindex_monthly.txt"  # Update this with the correct file path
+PNI= pd.read_csv(file_path2, delim_whitespace=True)  # Adjust delimiter if needed
+
+####################################################################################
+#PNI all messed up all this is just organizing it
+# Assuming PNI is your DataFrame and you want to drop columns by index
+columns_to_drop_index = [2,3,4,5,6]  # Replace with the actual column indices
+
+# Drop the specified columns by index
+PNI = PNI.drop(columns=PNI.columns[columns_to_drop_index])
+
+
+column_number = 0  # Assuming the value is in the first column
+
+# Extract the specific column using iloc
+numeric_column = PNI.iloc[:, column_number]
+# Extract the specific column using iloc
+numeric_column = pd.to_numeric(PNI.iloc[:, column_number], errors='coerce')
+# Separate into year and month
+PNI['Year'] = numeric_column // 100
+PNI['Month'] = numeric_column % 100
+
+
+# Specify column headers
+column_headers = ['YM', 'Pressure','Year', 'Month']
+
+# Assign column headers to the DataFrame
+PNI.columns = column_headers
+
+# Rename the 'NINO3.4' column to 'SST'
+ENSO = ENSO.rename(columns={'NINO3.4': 'SST'})
+
+# Display the updated DataFrame
+print(ENSO)
+
+
+################################################################################
+#convert to date time 
+# Combine 'Year' and 'Month' columns into a new 'Date' column
+PNI['Date'] = pd.to_datetime(PNI[['Year', 'Month']].assign(DAY=1))
+
+# Display the updated DataFrame
+print(PNI)
+
+# Rename columns 'YR' to 'year' and 'MON' to 'month'
+ENSO = ENSO.rename(columns={'YR': 'Year', 'MON': 'Month'})
+
+ENSO['Date'] = pd.to_datetime(ENSO[['Year', 'Month']].assign(DAY=1))
+
+# Display the updated DataFrame
+print(ENSO)
+##############################################################################
+#removing NaNs and making the data sets equal length
+# Drop rows with NaN values from both datasets
+PNI = PNI.dropna()
+ENSO = ENSO.dropna()
+#there are sevral negative outlier in the PNI data set, this gets rid of them
+# Filter out negative outliers in the 'Pressure' column
+PNI = PNI[PNI['Pressure'] >= 0]
+
+# Reset index after filtering
+PNI.reset_index(drop=True, inplace=True)
+
+
+
+
+################################################################
+# Plotting Monthly SST (ENSO)
+plt.subplot(2, 1, 1)  # 2 rows, 1 column, plot 1
+plt.plot(ENSO['Date'], ENSO['SST'], color='b', label='Monthly SST')
+plt.xlabel('Date')
+plt.ylabel('Monthly SST')
+plt.title('Monthly SST vs Date')
+plt.legend()
+
+# Plotting Monthly Pressure (PNI)
+plt.subplot(2, 1, 2)  # 2 rows, 1 column, plot 2
+plt.plot(PNI['Date'], PNI['Pressure'], color='r', label='Monthly Pressure')
+plt.xlabel('Date')
+plt.ylabel('Monthly Pressure')
+plt.title('Monthly Pressure vs Date')
+plt.legend()
+
+# Adjust layout
+plt.tight_layout()
+
+# Show the plots
+plt.show()
+###################################################################
+
+# Ensure both datasets have the same length by selecting the common date range
+common_dates = PNI.index.intersection(ENSO.index)
+
+# Filter both DataFrames to keep only the common dates
+PNI_common = PNI[PNI.index.isin(common_dates)]
+ENSO_common = ENSO[ENSO.index.isin(common_dates)]
+
+# Reset index to make 'Date' a regular column again
+PNI_common.reset_index(inplace=True)
+ENSO_common.reset_index(inplace=True)
+
+# Scatter plot of SST and Pressure
+plt.scatter(ENSO_common['SST'], PNI_common['Pressure'], color='purple', label='SST vs Pressure')
+plt.xlabel('Monthly SST')
+plt.ylabel('Monthly Pressure')
+plt.title('Scatter Plot of Monthly SST vs Monthly Pressure')
+plt.legend()
+
+# Show the plot
+plt.show()
+
+# Calculate and print the correlation coefficient
+correlation_coefficient = ENSO['SST'].corr(PNI['Pressure'])
+print(f"Correlation Coefficient: {correlation_coefficient}")
+
+# Calculate zero-lagged correlation coefficient between SST and Pressure
+correlation_coefficient = np.corrcoef(ENSO_common['SST'], PNI_common['Pressure'])[0, 1]
+
+# Print the result
+print(f"Zero-lagged correlation coefficient between SST and Pressure: {correlation_coefficient}")
+
+# Perform linear regression
+slope, intercept, r_value, p_value, std_err = linregress(ENSO_common['SST'], PNI_common['Pressure'])
+
+# Generate points for the line of best fit
+line_of_best_fit = slope * ENSO_common['SST'] + intercept
+
+# Plot the scatter plot
+plt.scatter(ENSO_common['SST'], PNI_common['Pressure'], color='purple', label='SST vs Pressure')
+
+# Plot the line of best fit
+plt.plot(ENSO_common['SST'], line_of_best_fit, color='red', label=f'Line of Best Fit: y = {slope:.2f}x + {intercept:.2f}')
+
+plt.xlabel('Monthly SST')
+plt.ylabel('Monthly Pressure')
+plt.title('Scatter Plot with Line of Best Fit')
+plt.legend()
+
+# Show the plot
+plt.show()
+#########################################################
+
+#########################################
+# Sampling frequency for monthly data (in Hz)
+sampling_frequency = 1 / 30  # Once per month
+
+# Welch's method parameters
+M = 18  # Number of windows
+Nc = 128  # Data points in each window
+beta = 2/3  # Overlap factor
+noverlap = int(Nc * beta)  # Overlap in points
+
+# Extract the SST and Pressure values
+sst_values = ENSO_common['SST'].values
+pressure_values = PNI_common['Pressure'].values
+
+# Calculate spectral densities using Welch's method
+f_sst, Sxx = welch(sst_values, fs=sampling_frequency, nperseg=Nc, noverlap=noverlap)
+f_pressure, Syy = welch(pressure_values, fs=sampling_frequency, nperseg=Nc, noverlap=noverlap)
+
+# Plot the Spectral Densities
+plt.figure(figsize=(12, 6))
+
+# Plotting Spectral Density for ENSO
+plt.subplot(2, 1, 1)
+plt.plot(f_sst, Sxx, color='b')
+plt.title('Spectral Density of ENSO (SST)')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power Density')
+
+# Plotting Spectral Density for PNI
+plt.subplot(2, 1, 2)
+plt.plot(f_pressure, Syy, color='r')
+plt.title('Spectral Density of PNI (Pressure)')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power Density')
+
+plt.tight_layout()
+plt.show()
+#####################################################
+#Estimate the cross-spectral density function STp for each record, using the same {M,Nc,β}.
+from scipy.signal import csd
+
+# Other parameters remain the same
+# M = 18  # Number of windows
+# Nc = 128  # Data points in each window
+# beta = 2/3  # Overlap factor
+# sampling_frequency = 1 / 30  # Once per month
+# noverlap = int(Nc * beta)  # Overlap in points
+
+# Calculate Cross-Spectral Density between SST and Pressure
+f, STp = csd(sst_values, pressure_values, fs=sampling_frequency, nperseg=Nc, noverlap=noverlap)
+
+# Plot the Cross-Spectral Density
+plt.figure(figsize=(8, 4))
+plt.plot(f, np.abs(STp), color='green')
+plt.title('Cross-Spectral Density of ENSO (SST) and PNI (Pressure)')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Cross Power Density')
+plt.show()
+##############################################################################
+#Plot your auto-spectra and cross-spectra versus cyclic frequency (in cycles/year)
+# include 95% confidence interval.
+#degrees of freedom
+from scipy.signal import welch
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Parameters
+M = 18  # Number of windows
+Nc = 128  # Data points in each window
+beta = 2 / 3  # Overlap factor
+noverlap = int(Nc * beta)
+fs = 1 / 30  # Sampling frequency (monthly data)
+
+# Auto-spectral density for SST and Pressure
+f_sst, S_sst = welch(sst_values, fs=fs, nperseg=Nc, noverlap=noverlap)
+f_pni, S_pni = welch(pressure_values, fs=fs, nperseg=Nc, noverlap=noverlap)
+
+# Cross-spectral density between SST and Pressure
+f_cross, S_cross = csd(sst_values, pressure_values, fs=fs, nperseg=Nc, noverlap=noverlap)
+
+# Degrees of freedom
+
+dof = 2 * M
+print("DOF:", dof)
+# Convert frequency to cycles/year
+f_sst *= 12
+f_pni *= 12
+f_cross *= 12
+
+# Calculate 95% confidence intervals
+ci = np.sqrt(2 / dof)
+S_sst_lower = S_sst * (1 - ci)
+S_sst_upper = S_sst * (1 + ci)
+S_pni_lower = S_pni * (1 - ci)
+S_pni_upper = S_pni * (1 + ci)
+
+# Plotting
+plt.figure(figsize=(10, 6))
+plt.loglog(f_sst, S_sst, label='Auto-Spectrum SST', color='blue')
+plt.fill_between(f_sst, S_sst_lower, S_sst_upper, color='blue', alpha=0.2)
+plt.loglog(f_pni, S_pni, label='Auto-Spectrum Pressure', color='red')
+plt.fill_between(f_pni, S_pni_lower, S_pni_upper, color='red', alpha=0.2)
+plt.loglog(f_cross, np.abs(S_cross), label='Cross-Spectrum SST-Pressure', color='green')
+
+plt.xlabel('Cyclic Frequency (cycles/year)')
+plt.ylabel('Spectral Density')
+plt.title('Auto-Spectra and Cross-Spectra with 95% Confidence Interval')
+plt.legend()
+plt.show()
+##################################################################
+#Plot the coherence γˆ2 and phase ϕˆ on a linear scale versus frequency on a log10 scale
+from scipy.signal import coherence, csd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Compute coherence and phase
+f, Cxy = coherence(sst_values, pressure_values, fs=fs, nperseg=Nc, noverlap=noverlap)
+_, S_cross = csd(sst_values, pressure_values, fs=fs, nperseg=Nc, noverlap=noverlap)
+phase = np.angle(S_cross)
+
+# Degrees of freedom
+dof = 2 * M
+
+# 95% confidence threshold for zero coherence
+threshold = 1 - (0.05 ** (1 / (dof / 2 - 1)))
+
+# Plot coherence
+plt.figure(figsize=(10, 6))
+plt.semilogx(f * 12, Cxy, label='Coherence', color='blue')  # Cycles per year
+plt.axhline(y=threshold, color='red', linestyle='--', label='95% Confidence Threshold')
+
+# Plot phase with unwrapping
+plt.figure(figsize=(10, 6))
+plt.semilogx(f * 12, np.unwrap(phase), label='Phase', color='green')
+
+# Set labels and titles
+plt.xlabel('Cyclic Frequency (cycles/year)')
+plt.ylabel('Coherence / Phase')
+plt.title('Coherence and Phase vs Frequency')
+plt.legend()
+plt.show()
+
+# Coherence error bars
+error = np.sqrt(1 / dof) * Cxy
+Cxy_upper = Cxy + error
+Cxy_lower = Cxy - error
+Cxy_lower[Cxy_lower < 0] = 0  # Coherence cannot be negative
+
+# Plot coherence with error bars for values above the threshold
+plt.figure(figsize=(10, 6))
+plt.semilogx(f * 12, Cxy, label='Coherence', color='blue')
+plt.fill_between(f * 12, Cxy_lower, Cxy_upper, where=Cxy > threshold, color='blue', alpha=0.2)
+plt.axhline(y=threshold, color='red', linestyle='--', label='95% Confidence Threshold')
+
+plt.xlabel('Cyclic Frequency (cycles/year)')
+plt.ylabel('Coherence')
+plt.title('Coherence with 95% Confidence Interval')
+plt.legend()
+plt.show()
+################################################################
+# Plot coherence with error bars and threshold
+plt.figure(figsize=(10, 6))
+plt.semilogx(f * 12, Cxy, label='Coherence', color='blue')  # Convert to cycles per year
+error = np.sqrt(1 / dof) * Cxy
+Cxy_upper = Cxy + error
+Cxy_lower = Cxy - error
+Cxy_lower[Cxy_lower < 0] = 0  # Coherence cannot be negative
+plt.fill_between(f * 12, Cxy_lower, Cxy_upper, where=Cxy > threshold, color='blue', alpha=0.2)
+plt.axhline(y=threshold, color='red', linestyle='--', label='95% Confidence Threshold')
+plt.xlabel('Cyclic Frequency (cycles/year)')
+plt.ylabel('Coherence')
+plt.title('Coherence vs Frequency')
+plt.legend()
+plt.show()
+
+# Plot phase
+plt.figure(figsize=(10, 6))
+plt.semilogx(f * 12, np.unwrap(phase), label='Phase', color='green')  # Convert to cycles per year
+plt.xlabel('Cyclic Frequency (cycles/year)')
+plt.ylabel('Phase (radians)')
+plt.title('Phase vs Frequency')
+plt.legend()
+plt.show()
+###############
+# Plot coherence with error bars and threshold
+plt.figure(figsize=(10, 6))
+plt.semilogx(f, Cxy, label='Coherence', color='blue')  # Frequency in Hz
+error = np.sqrt(1 / dof) * Cxy
+Cxy_upper = Cxy + error
+Cxy_lower = Cxy - error
+Cxy_lower[Cxy_lower < 0] = 0  # Coherence cannot be negative
+plt.fill_between(f, Cxy_lower, Cxy_upper, where=Cxy > threshold, color='blue', alpha=0.2)
+plt.axhline(y=threshold, color='red', linestyle='--', label='95% Confidence Threshold')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Coherence')
+plt.title('Coherence vs Frequency (Hz)')
+plt.legend()
+plt.show()
+########################################################
+import pandas as pd
+import matplotlib.pyplot as plt
+import pandas as pd
+import matplotlib.dates as mdates
+
+# Define the window size for the moving average filter (2 years)
+window_size = 24  # 12 months/year * 2 years = 24 months
+
+# Define a function to apply the moving average filter
+def low_pass_filter(data, window_size):
+    return data.rolling(window=window_size, min_periods=1).mean()
+
+# Apply low-pass filter to SST and Pressure
+ENSO_common['SST_lp'] = low_pass_filter(ENSO_common['SST'], window_size)
+PNI_common['Pressure_lp'] = low_pass_filter(PNI_common['Pressure'], window_size)
+
+# Find the date range that is common to both datasets
+start_date = max(ENSO_common['Date'].min(), PNI_common['Date'].min())
+end_date = min(ENSO_common['Date'].max(), PNI_common['Date'].max())
+
+# Filter both datasets to cover the same time periods
+ENSO_common = ENSO_common[(ENSO_common['Date'] >= start_date) & (ENSO_common['Date'] <= end_date)]
+PNI_common = PNI_common[(PNI_common['Date'] >= start_date) & (PNI_common['Date'] <= end_date)]
+
+# Check for NaN values after filtering and handle them
+ENSO_common.dropna(subset=['SST_lp'], inplace=True)
+PNI_common.dropna(subset=['Pressure_lp'], inplace=True)
+
+# Ensure both datasets have the same length after dropping NaNs
+ENSO_common = ENSO_common.iloc[:min(len(ENSO_common), len(PNI_common))]
+PNI_common = PNI_common.iloc[:min(len(ENSO_common), len(PNI_common))]
+
+# Convert to numeric if necessary
+ENSO_common['SST_lp'] = pd.to_numeric(ENSO_common['SST_lp'], errors='coerce')
+PNI_common['Pressure_lp'] = pd.to_numeric(PNI_common['Pressure_lp'], errors='coerce')
+
+# Drop any new NaNs that might have appeared after conversion
+ENSO_common.dropna(subset=['SST_lp'], inplace=True)
+PNI_common.dropna(subset=['Pressure_lp'], inplace=True)
+
+# Reset indices to ensure they match
+ENSO_common.reset_index(drop=True, inplace=True)
+PNI_common.reset_index(drop=True, inplace=True)
+
+# Check variance
+print("Variance in ENSO_common['SST_lp']:", ENSO_common['SST_lp'].var())
+print("Variance in PNI_common['Pressure_lp']:", PNI_common['Pressure_lp'].var())
+
+# Calculate the correlation coefficient
+correlation_coefficient_lp = ENSO_common['SST_lp'].corr(PNI_common['Pressure_lp'])
+print(f"Correlation Coefficient: {correlation_coefficient_lp}")
+# Plot the low-pass filtered records separately
+plt.figure(figsize=(12, 6))
+# [Plotting code remains the same]
+
+# Calculate the correlation coefficient between low-pass filtered SST and Pressure
+correlation_coefficient_lp = ENSO_common['SST_lp'].corr(PNI_common['Pressure_lp'])
+print(f"Correlation Coefficient between Low-Pass Filtered SST and Pressure: {correlation_coefficient_lp}")
+
+# Calculate and display the correlation coefficient
+correlation_coefficient_lp = ENSO_common['SST_lp'].corr(PNI_common['Pressure_lp'])
+print(f"Correlation Coefficient: {correlation_coefficient_lp}")
+
+# Plot the low-pass filtered records separately
+plt.figure(figsize=(12, 6))
+
+# Plotting Low-Pass Filtered SST from ENSO_common
+plt.subplot(2, 1, 1)
+plt.plot(ENSO_common['Date'], ENSO_common['SST_lp'], color='blue', label='Low-Pass Filtered SST')
+plt.xlabel('Date')
+plt.ylabel('SST')
+plt.title('Low-Pass Filtered SST (ENSO)')
+plt.legend()
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+plt.gca().xaxis.set_major_locator(mdates.YearLocator())
+plt.xticks(rotation=45)
+
+# Plotting Low-Pass Filtered Pressure from PNI_common
+plt.subplot(2, 1, 2)
+plt.plot(PNI_common['Date'], PNI_common['Pressure_lp'], color='red', label='Low-Pass Filtered Pressure')
+plt.xlabel('Date')
+plt.ylabel('Pressure')
+plt.title('Low-Pass Filtered Pressure (PNI)')
+plt.legend()
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+plt.gca().xaxis.set_major_locator(mdates.YearLocator())
+plt.xticks(rotation=45)
+
+# Adjust layout and show the plot
+plt.tight_layout()
+plt.show()
+
+----
+
+
++*Out[40]:*+
+----
+       YR  MON  NINO1+2  ANOM  NINO3  ANOM.1  NINO4  ANOM.2    SST  ANOM.3
+0    1950    1    23.01 -1.55  23.56   -2.10  26.94   -1.38  24.55   -1.99
+1    1950    2    24.32 -1.78  24.89   -1.52  26.67   -1.53  25.06   -1.69
+2    1950    3    25.11 -1.38  26.36   -0.84  26.52   -1.80  25.87   -1.42
+3    1950    4    23.63 -1.90  26.44   -1.14  26.90   -1.73  26.28   -1.54
+4    1950    5    22.68 -1.74  25.69   -1.57  27.73   -1.18  26.18   -1.75
+..    ...  ...      ...   ...    ...     ...    ...     ...    ...     ...
+881  2023    6    25.62  2.50  27.88    1.26  29.54    0.57  28.57    0.84
+882  2023    7    24.94  2.98  27.41    1.61  29.59    0.69  28.32    1.02
+883  2023    8    24.29  3.28  27.12    2.00  29.72    0.93  28.21    1.35
+884  2023    9    23.14  2.41  27.01    2.11  29.88    1.12  28.32    1.60
+885  2023   10    23.36  2.34  27.11    2.13  29.96    1.20  28.38    1.66
+
+[886 rows x 10 columns]
+          YM  Pressure  Year  Month       Date
+0     189901   1009.94  1899      1 1899-01-01
+1     189902   1009.32  1899      2 1899-02-01
+2     189903   1009.78  1899      3 1899-03-01
+3     189904   1014.77  1899      4 1899-04-01
+4     189905   1014.55  1899      5 1899-05-01
+...      ...       ...   ...    ...        ...
+1495  202308   1016.05  2023      8 2023-08-01
+1496  202309   -999.00  2023      9 2023-09-01
+1497  202310   -999.00  2023     10 2023-10-01
+1498  202311   -999.00  2023     11 2023-11-01
+1499  202312   -999.00  2023     12 2023-12-01
+
+[1500 rows x 5 columns]
+     Year  Month  NINO1+2  ANOM  NINO3  ANOM.1  NINO4  ANOM.2    SST  ANOM.3  \
+0    1950      1    23.01 -1.55  23.56   -2.10  26.94   -1.38  24.55   -1.99   
+1    1950      2    24.32 -1.78  24.89   -1.52  26.67   -1.53  25.06   -1.69   
+2    1950      3    25.11 -1.38  26.36   -0.84  26.52   -1.80  25.87   -1.42   
+3    1950      4    23.63 -1.90  26.44   -1.14  26.90   -1.73  26.28   -1.54   
+4    1950      5    22.68 -1.74  25.69   -1.57  27.73   -1.18  26.18   -1.75   
+..    ...    ...      ...   ...    ...     ...    ...     ...    ...     ...   
+881  2023      6    25.62  2.50  27.88    1.26  29.54    0.57  28.57    0.84   
+882  2023      7    24.94  2.98  27.41    1.61  29.59    0.69  28.32    1.02   
+883  2023      8    24.29  3.28  27.12    2.00  29.72    0.93  28.21    1.35   
+884  2023      9    23.14  2.41  27.01    2.11  29.88    1.12  28.32    1.60   
+885  2023     10    23.36  2.34  27.11    2.13  29.96    1.20  28.38    1.66   
+
+          Date  
+0   1950-01-01  
+1   1950-02-01  
+2   1950-03-01  
+3   1950-04-01  
+4   1950-05-01  
+..         ...  
+881 2023-06-01  
+882 2023-07-01  
+883 2023-08-01  
+884 2023-09-01  
+885 2023-10-01  
+
+[886 rows x 11 columns]
+
+![png](output_0_1.png)
+
+![png](output_0_2.png)
+
+Correlation Coefficient: 0.20531198013907961
+Zero-lagged correlation coefficient between SST and Pressure: 0.20531198013907961
+
+![png](output_0_4.png)
+
+![png](output_0_5.png)
+
+![png](output_0_6.png)
+
+DOF: 36
+
+![png](output_0_8.png)
+
+![png](output_0_9.png)
+
+![png](output_0_10.png)
+
+![png](output_0_11.png)
+
+![png](output_0_12.png)
+
+![png](output_0_13.png)
+
+![png](output_0_14.png)
+
+C:\Users\cbeau\AppData\Local\Temp\ipykernel_26780\3760993749.py:367: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  PNI_common['Pressure_lp'] = low_pass_filter(PNI_common['Pressure'], window_size)
+
+Variance in ENSO_common['SST_lp']: 0.25143532677105757
+Variance in PNI_common['Pressure_lp']: 0.3198652331849552
+Correlation Coefficient: -0.6229103416741385
+Correlation Coefficient between Low-Pass Filtered SST and Pressure: -0.6229103416741385
+Correlation Coefficient: -0.6229103416741385
+<Figure size 1200x600 with 0 Axes>
+![png](output_0_18.png)
+----
+
+
++*In[ ]:*+
+[source, ipython3]
+----
+
+----
